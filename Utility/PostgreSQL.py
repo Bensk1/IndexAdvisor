@@ -16,8 +16,10 @@ class PGHypo:
         self.user = defaults.get('pg_user')
         self.password = defaults.get('pg_password')
         self.database = defaults.get('pg_database')
-        self.conn = pg.connect(database=self.database, user=self.user, password=self.password, host=self.host,
-                                     port=self.port)
+        self.conn = pg.connect("dbname=indexselection_tpch___10")
+        cur = self.conn.cursor()
+        cur.execute("SET max_parallel_workers_per_gather = 0;")
+        cur.execute("SET enable_bitmapscan TO off;")
 
     def close(self):
         self.conn.close()
