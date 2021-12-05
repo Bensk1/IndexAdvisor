@@ -144,7 +144,11 @@ class Parser:
 
     def parse_stmt(self, stmt):
         self.table_info = dict()
-        select_stmt = stmt['SelectStmt']
+        select_stmt = None
+        if 'ViewStmt' in stmt:
+            select_stmt = stmt['ViewStmt']['query']['SelectStmt']
+        else:
+            select_stmt = stmt['SelectStmt']
         self.parse_select(select_stmt)
         return
 
@@ -158,6 +162,8 @@ class Parser:
             # subquery/sublink
             return
         self.table_info[alias_name] = Table(table_name, alias_name, True)
+        if table_name not in self.db_info:
+            self.db_info[table_name] = dict()
         self.table_info[alias_name].set_columns(self.db_info[table_name])
 
     def parse_range_subselect(self, subselect):
@@ -185,8 +191,11 @@ class Parser:
                 if col_name in self.table_info[t].columns.keys():
                     return t, self.table_info[t].columns[col_name].is_origin
         else:
-            col_info = self.table_info[t_n].columns[col_name]
-            return table_name, col_info.is_origin
+            if t_n in self.table_info:
+                if col_name not in self.table_info[t_n].columns:
+                    return table_name, False
+                col_info = self.table_info[t_n].columns[col_name]
+                return table_name, col_info.is_origin
         return "", False
 
     def parse_lr_expr(self, expr, is_or, is_target):
@@ -196,14 +205,19 @@ class Parser:
         if 'ColumnRef' in expr.keys():
             etype = 0
             column_ref = expr['ColumnRef']
+
             if len(column_ref['fields']) == 1:
                 col_name1 = column_ref['fields'][0]['String']['str']
                 table_name1, is_o = self.is_original_column("", col_name1)
+                if table_name1 not in self.table_info:
+                    return etype, table_name1, col_name1, value_type1, value1, is_o
                 self.table_info[table_name1].add_used_column(col_name1)
             else:
                 col_name1 = column_ref['fields'][1]['String']['str']
                 table_name1, is_o = self.is_original_column(column_ref['fields'][0]['String']['str'],
                                                             col_name1)
+                if table_name1 not in self.table_info:
+                    return etype, table_name1, col_name1, value_type1, value1, is_o
                 self.table_info[table_name1].add_used_column(col_name1)
 
         elif 'A_Const' in expr.keys():
@@ -224,7 +238,8 @@ class Parser:
             detial = expr['TypeCast']
             type_name = detial['typeName']
             value_type1 = type_name['TypeName']['names'][0]['String']['str']
-            value1 = detial['arg']['A_Const']['val']['String']['str']
+            if 'A_Const' in detial['arg']:
+                value1 = detial['arg']['A_Const']['val']['String']['str']
         elif 'SubLink' in expr.keys():
             etype = 1
             is_o = True
@@ -258,15 +273,19 @@ class Parser:
                 # table_name, _type, value_type, otherside):
                 c_l = Condition(table_name1, "join", col_name1, "", table_name2 + "#@#" + col_name2)
                 c_r = Condition(table_name2, "join", col_name2, "", table_name1 + "#@#" + col_name1)
-                self.table_info[table_name1].join_conditions.append(c_l)
-                self.table_info[table_name2].join_conditions.append(c_r)
+                if table_name1 in self.table_info:
+                    self.table_info[table_name1].join_conditions.append(c_l)
+                if table_name2 in self.table_info:
+                    self.table_info[table_name2].join_conditions.append(c_r)
             else:
                 if etype1 == 0:
                     c = Condition(table_name1, op, col_name1, value_type2, value2)
-                    self.table_info[table_name1].conditions.append(c)
+                    if table_name1 in self.table_info:
+                        self.table_info[table_name1].conditions.append(c)
                 else:
                     c = Condition(table_name2, op, col_name2, value_type1, value1)
-                    self.table_info[table_name2].conditions.append(c)
+                    if table_name2 in self.table_info:
+                        self.table_info[table_name2].conditions.append(c)
 
     def parse_bool_expr(self, bool_expr, is_in_or):
         is_or = is_in_or
@@ -294,6 +313,8 @@ class Parser:
     def parse_fun_call(self, fun_call, is_in_or, is_target):
         if 'agg_star' in fun_call.keys():
             return
+        if 'args' not in fun_call:
+            return
         args = fun_call['args']
         for i in range(len(args)):
             if 'ColumnRef' in args[i].keys():
@@ -308,13 +329,13 @@ class Parser:
                 return
             col_name = column_info['fields'][0]['String']['str']
             table_name, is_or = self.is_original_column('', col_name)
-            if table_name == "":
-                return
-            self.table_info[table_name].add_used_column(col_name)
+            if table_name in self.table_info:
+                self.table_info[table_name].add_used_column(col_name)
         else:
             table_name = column_info['fields'][0]['String']['str']
             col_name = column_info['fields'][1]['String']['str']
-            self.table_info[table_name].add_used_column(col_name)
+            if table_name in self.table_info:
+                self.table_info[table_name].add_used_column(col_name)
 
     def parse_res_target(self, res_target):
         # name in target, we do not need to consider. because it is for users.
@@ -432,12 +453,14 @@ class Parser:
                             self.table_info[table_name1].add_used_column(col_name1)
                             columns[col_name1] = index
                             index += 1
-        self.table_info[which_table].order = columns
+        if which_table in self.table_info:
+            self.table_info[which_table].order = columns
 
     def parse_select(self, select_stmt):
         # (1)parse from
-        from_clause = select_stmt['fromClause']
-        self.parse_from_clause(from_clause)
+        if 'fromClause' in select_stmt:
+            from_clause = select_stmt['fromClause']
+            self.parse_from_clause(from_clause)
 
         # (2)parse where
         if 'whereClause' in select_stmt.keys():
@@ -445,8 +468,9 @@ class Parser:
             self.parse_where_clause(where_clause)
 
         # (3)parse target
-        target_list = select_stmt['targetList']
-        self.parse_targets(target_list)
+        if 'targetList' in select_stmt:
+            target_list = select_stmt['targetList']
+            self.parse_targets(target_list)
 
         # (4)parse order,group
         if 'groupClause' in select_stmt.keys():
