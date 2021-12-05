@@ -7,7 +7,7 @@ import time
 
 
 class PGHypo:
-    def __init__(self):
+    def __init__(self, workload=None):
         config_raw = ConfigParser()
         config_raw.read(os.path.abspath('..') + '/configure.ini')
         defaults = config_raw.defaults()
@@ -16,7 +16,15 @@ class PGHypo:
         self.user = defaults.get('pg_user')
         self.password = defaults.get('pg_password')
         self.database = defaults.get('pg_database')
-        self.conn = pg.connect("dbname=indexselection_tpch___10")
+        self.conn = None
+        if workload == "tpcds":
+            self.conn = pg.connect("dbname=indexselection_tpcds___10")
+        elif workload == "job":
+            self.conn = pg.connect("dbname=indexselection_job___1")
+        elif workload == "tpch":
+            self.conn = pg.connect("dbname=indexselection_tpch___10")
+        else:
+            assert False is True, "Unsupported workload"
         cur = self.conn.cursor()
         cur.execute("SET max_parallel_workers_per_gather = 0;")
         cur.execute("SET enable_bitmapscan TO off;")
