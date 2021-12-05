@@ -1,5 +1,5 @@
 # Adapted IndexAdvisor
-Originally released as part of the paper An Index Advisor Using Deep Reinforcement Learning by Lan, Bao, and Peng
+This repository was originally released as part of the paper *An Index Advisor Using Deep Reinforcement Learning* by Lan, Bao, and Peng.
 
 We modified some parts of it to enable other workloads, TPC-DS and Join Order Benchmark, and to evaluate it with workloads from our paper.
 The below original README is slightly updated.
