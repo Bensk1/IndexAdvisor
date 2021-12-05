@@ -54,6 +54,23 @@ class PGHypo:
         cost_list: List[float] = list()
         cur = self.conn.cursor()
         for i, query in enumerate(query_list):
+
+            if "create view" in query:
+                splits = query.split(";")
+                cur.execute(splits[0])
+
+                query = "explain " + splits[1]
+                cur.execute(query)
+                rows = cur.fetchall()
+                df = pd.DataFrame(rows)
+                cost_info = str(df[0][0])
+                cost_list.append(float(cost_info[cost_info.index("..") + 2:cost_info.index(" rows=")]))
+
+                cur.execute(splits[2])
+
+                continue
+
+
             query = "explain " + query
             cur.execute(query)
             rows = cur.fetchall()
