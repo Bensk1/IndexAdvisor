@@ -51,7 +51,7 @@ class NN(nn.Module):
 
 
 class DQN:
-    def __init__(self, workload, action, index_mode, conf):
+    def __init__(self, workload, action, index_mode, conf, storage_budget_bytes, frequencies, workload_short):
         self.conf = conf
         self.workload = workload
         self.action = action
@@ -75,7 +75,7 @@ class DQN:
         self.actor_loss_trace = list()
 
         # environment
-        self.envx = env.Env(self.workload, self.action, self.index_mode)
+        self.envx = env.Env(self.workload, self.action, self.index_mode, storage_budget_bytes, frequencies, workload_short)
 
         # store the parameters
         self.writer = SummaryWriter(directory)
@@ -157,7 +157,8 @@ class DQN:
         current_best_index = None
         current_best_index_s = 0
         for ep in range(self.conf['EPISODES']):
-            print("======"+str(ep)+"=====")
+            if ep%50 == 0:
+                print("======"+str(ep)+"=====")
             state = self.envx.reset()
             rewards = []
             t_r = 0
@@ -187,9 +188,9 @@ class DQN:
                         current_best_index_s = self.envx.storage_trace_overall[-1]
                     self.replay_buffer.add(1.0, (last_input_state.tolist(), last_next_state.tolist(), last_action, last_reward, np.float(done)))
                     if self.replay_buffer.can_update():
-                        if is_first:
-                            print("first:", ep)
-                            is_first = False
+                        # if is_first:
+                            # print("first:", ep)
+                            # is_first = False
                         self.update()
                     break
                 state = next_state
@@ -197,9 +198,22 @@ class DQN:
         x = range(len(self.envx.cost_trace_overall))
         y2 = [math.log(a, 10) for a in self.envx.cost_trace_overall]
         plt.plot(x, y2, marker='x')
-        plt.savefig(self.conf['NAME'] + "freq.png", dpi=120)
+        # plt.savefig(self.conf['NAME'] + "freq.png", dpi=120)
         plt.clf()
         plt.close()
-        return current_best_index, current_best_index_s
+
+        print("############################")
+        print(f"Minimum observed cost: {min(self.envx.cost_trace_overall_actual):,.2f}")
+        relative_cost =  min(self.envx.cost_trace_overall_actual) / self.envx.real_cost
+        print(f"Relative to no indexes: {relative_cost}")
+
+        # print(self.envx.times)
+        print(f"Minimum cost obser after: {self.envx.times[np.argmin(self.envx.cost_trace_overall_actual)]:,.2f}")
+        print(f"Total time: {self.envx.times[-1]:,.2f}")
+        print("Note that at the point when the minimum cost occured, we don't know whether lower costs will occur in the future.")
+        print("Therefore, the model has to run for the full length of provided episodes.")
+
+
+        return current_best_index, current_best_index_s, min(self.envx.cost_trace_overall_actual), self.envx.times[-1], self.envx.times[np.argmin(self.envx.cost_trace_overall_actual)], relative_cost
 
 

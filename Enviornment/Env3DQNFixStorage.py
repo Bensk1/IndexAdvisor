@@ -3,24 +3,47 @@ from Utility import PostgreSQL as pg
 import math
 from typing import List
 import sys
-
+import time
 
 class Env:
-    def __init__(self, workload, candidates, mode):
+    def __init__(self, workload, candidates, mode, storage_budget_bytes=None, frequencies=None, workload_short=None):
         self.workload = workload
         self.candidates = candidates
         # create real/hypothetical index
         self.mode = mode
-        self.pg_client1 = pg.PGHypo()
-        self.pg_client2 = pg.PGHypo()
-        self._frequencies = [1659, 1301, 1190, 1741, 1688, 1242, 1999, 1808, 1433, 1083, 1796, 1266, 1046, 1353]
-        # self._frequencies = [1659, 1301, 1190, 1741, 1688, 1242, 1999, 1808]
-        # self._frequencies = [1] * 14
+        assert workload is not None
+        self.pg_client1 = pg.PGHypo(workload_short)
+        self.pg_client2 = pg.PGHypo(workload_short)
+
+        self.storage_budget_bytes = storage_budget_bytes
+
+        # Frequencies as hardcoded by the original paper
+        if frequencies is None:
+            self._frequencies = [2074, 9066, 7753, 2625, 1693, 3104, 9544, 2106, 4576, 5388, 8426, 9583, 5594, 5205, 9302, 865, 3885, 340]
+        # Parameter-provided frequencies
+        else:
+            self._frequencies = frequencies
+        assert len(workload) == len(self._frequencies), f"{len(workload)} != {len(self._frequencies)}"
         self.frequencies = np.array(self._frequencies) / np.array(self._frequencies).sum()
 
         # state info
         self.init_cost = np.array(self.pg_client1.get_queries_cost(workload))*self.frequencies
         self.init_cost_sum = self.init_cost.sum()
+
+
+
+        print("#############################")
+        print("#############################")
+        self.real_cost = (np.array(self.pg_client1.get_queries_cost(workload)) * self._frequencies).sum()
+        self.last_actual_cost = self.real_cost
+        print(f"Cost without indexes: {self.real_cost:,.2f}")
+        print("#############################")
+        print("#############################")
+
+
+        self.start_time = time.time()
+        self.times = []
+
         self.init_state = np.append(self.frequencies, np.zeros((len(candidates),), dtype=np.float))
         self.last_state = self.init_state
         self.last_cost = self.init_cost
@@ -35,6 +58,7 @@ class Env:
 
         # monitor info
         self.cost_trace_overall = list()
+        self.cost_trace_overall_actual = list()
         self.index_trace_overall = list()
         self.storage_trace_overall = list()
         self.min_cost_overall = list()
@@ -73,18 +97,22 @@ class Env:
             reward = math.log(0.00001, deltac0)
         if reward > 0:
             reward += self.imp_count
-        print(reward)
+        # print(reward)
         self.current_storage_sum += storage_cost
-        if self.current_storage_sum >= self.max_size:
+        if self.current_storage_sum >= self.storage_budget_bytes:
             self.cost_trace_overall.append(self.last_cost_sum)
+            self.cost_trace_overall_actual.append(self.last_actual_cost)
             self.index_trace_overall.append(self.currenct_index)
             self.storage_trace_overall.append(self.current_index_storage)
+            self.times.append(round(time.time() - self.start_time, 2))
+
             return self.last_state, reward, True
         self.index_oids[action] = _oid
         self.currenct_index[action] = 1.0
         self.current_index_storage[action] = storage_cost
         self.current_index_count += 1
         self.last_cost = current_cost_info
+        self.last_actual_cost = (np.array(self.pg_client1.get_queries_cost(self.workload)) * self._frequencies).sum()
         self.last_state = np.append(self.frequencies, self.currenct_index)
         self.last_cost_sum = current_cost_sum
         self.last_reward = reward
