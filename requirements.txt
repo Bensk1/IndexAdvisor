@@ -1,0 +1,16 @@
+cycler==0.10.0
+kiwisolver==1.3.1
+matplotlib==3.4.1
+numpy==1.20.2
+pandas==1.2.4
+Pillow==8.2.0
+protobuf==3.15.8
+psqlparse==1.0rc6
+psycopg2==2.8.6
+pyparsing==2.4.7
+python-dateutil==2.8.1
+pytz==2021.1
+six==1.15.0
+tensorboardX==2.2
+torch==1.8.1
+typing-extensions==3.7.4.3
